@@ -2,8 +2,31 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray
+from enum import IntEnum
 import numpy as np
 np.set_printoptions(precision=3, suppress=True)
+
+## VERY IMPORTANT this is the defined order of ee_triangle_positions, fk_functions 
+## thus affects the order of target_joint_positions_cache, target_ee_cache ... 
+class Leg(IntEnum):
+    FRONT_RIGHT = 0
+    FRONT_LEFT = 1
+    BACK_RIGHT = 2
+    BACK_LEFT = 3
+    TOTAL = 4
+## VERY IMPORTANT - THIS VARIABLE MUST BE SET AND DETERMINE WHAT LEG TO MOVE (USED FOR DEBUGGING)
+DESIRED_LEG = Leg.FRONT_RIGHT
+
+## SEE https://www.youtube.com/watch?v=IsxojXns5Jg
+class Gait(IntEnum):
+    TROTTING = 0
+    WALKING = 1
+    CANTER = 2
+    GALLOP = 3
+    TOTAL = 4
+
+## VERY IMPORTANT - THIS VARIABLE MUST BE SET TO DETERMINE WHAT GAIT TO USE
+DESIRED_GAIT = Gait.TROTTING
 
 def rotation_x(angle):
     return np.array(
@@ -84,51 +107,63 @@ class InverseKinematics(Node):
         stand_position_3 = np.array([-0.025, 0.0, -0.14])
         liftoff_position = np.array([-0.05, 0.0, -0.14])
         mid_swing_position = np.array([0.0, 0.0, -0.05])
+
+        # some aliasing to make assignemnt easier to read (note assignment is by reference in python)
+        td = touch_down_position
+        s1 = stand_position_1
+        s2 = stand_position_2
+        s3 = stand_position_3
+        lo = liftoff_position
+        ms = mid_swing_position
+
+        # array to better organize the gaits for each foot
+        gait_array = {
+            Gait.TROTTING: 
+            {
+                # NOTE: TROTTING gait is diagonal so FR and BL are in phase, FL and BR are in phase
+                Leg.FRONT_RIGHT: np.array([td, s1, s2, s3, lo, ms]),
+                Leg.FRONT_LEFT: np.array([lo, ms, td, s1, s2, s3]),
+                Leg.BACK_RIGHT: np.array([lo, ms, td, s1, s2, s3]),
+                Leg.BACK_LEFT: np.array([td, s1, s2, s3, lo, ms])
+            },
+            # NOTE: these below are unimplemented 
+            Gait.WALKING: 
+            {
+                Leg.FRONT_RIGHT: np.array([]),
+                Leg.FRONT_LEFT: np.array([]),
+                Leg.BACK_RIGHT: np.array([]),
+                Leg.BACK_LEFT: np.array([])
+            },
+            Gait.CANTER:
+            {
+                Leg.FRONT_RIGHT: np.array([]),
+                Leg.FRONT_LEFT: np.array([]),
+                Leg.BACK_RIGHT: np.array([]),
+                Leg.BACK_LEFT: np.array([])
+            },
+            Gait.GALLOP:
+            {
+                Leg.FRONT_RIGHT: np.array([]),
+                Leg.FRONT_LEFT: np.array([]),
+                Leg.BACK_RIGHT: np.array([]),
+                Leg.BACK_LEFT: np.array([])
+            }
+        }
         
         ## trotting
         # Take positions defining gait and add offset of each foot to get trajectory  
         # note each leg iterates through different order of trotting gait positions
         rf_ee_offset = np.array([0.06, -0.09, 0]) # right front foot
-        rf_ee_triangle_positions = np.array([
-            touch_down_position,
-            stand_position_1,
-            stand_position_2,
-            stand_position_3,
-            liftoff_position,
-            mid_swing_position,
-        ]) + rf_ee_offset
+        rf_ee_triangle_positions = gait_array[DESIRED_GAIT][Leg.FRONT_RIGHT] + rf_ee_offset
         
-        lf_ee_offset = np.array([0.06, 0.09, 0]) # left fron foot
-        lf_ee_triangle_positions = np.array([
-            liftoff_position,
-            mid_swing_position,
-            touch_down_position,
-            stand_position_1,
-            stand_position_2,
-            stand_position_3,
-
-        ]) + lf_ee_offset
+        lf_ee_offset = np.array([0.06, 0.09, 0]) # left front foot
+        lf_ee_triangle_positions = gait_array[DESIRED_GAIT][Leg.FRONT_LEFT] + rf_ee_offset
         
         rb_ee_offset = np.array([-0.11, -0.09, 0]) # right back foot
-        rb_ee_triangle_positions = np.array([
-            liftoff_position,
-            mid_swing_position,
-            touch_down_position,
-            stand_position_1,
-            stand_position_2,
-            stand_position_3,
-        ]) + rb_ee_offset
+        rb_ee_triangle_positions = gait_array[DESIRED_GAIT][Leg.BACK_RIGHT] + rb_ee_offset
         
         lb_ee_offset = np.array([-0.11, 0.09, 0]) # left back foot
-        lb_ee_triangle_positions = np.array([
-
-            touch_down_position,
-            stand_position_1,
-            stand_position_2,
-            stand_position_3,
-            liftoff_position,
-            mid_swing_position,
-        ]) + lb_ee_offset
+        lb_ee_triangle_positions = gait_array[DESIRED_GAIT][Leg.BACK_LEFT] + lb_ee_offset
 
         # store triangle trajectory of each foot and forward kinematics functions for each leg in a list for easy access
         self.ee_triangle_positions = [rf_ee_triangle_positions, lf_ee_triangle_positions, rb_ee_triangle_positions, lb_ee_triangle_positions]
@@ -267,7 +302,7 @@ class InverseKinematics(Node):
         # Calculate and store the target joint positions for a cycle and all 4 legs
         target_joint_positions_cache = []
         target_ee_cache = []
-        for leg_index in range(4):
+        for leg_index in range(Leg.TOTAL):
             target_joint_positions_cache.append([])
             target_ee_cache.append([])
             target_joint_positions = [0] * 3
@@ -281,7 +316,7 @@ class InverseKinematics(Node):
                 target_joint_positions_cache[leg_index].append(target_joint_positions)
                 target_ee_cache[leg_index].append(target_ee)
 
-        # (4, 50, 3) -> (50, 12)
+        # (4, 50, 3) -> (50, 12) - combing 4 arrays of 50x3 into one array of 50x12
         target_joint_positions_cache = np.concatenate(target_joint_positions_cache, axis=1)
         target_ee_cache = np.concatenate(target_ee_cache, axis=1)
         
@@ -299,7 +334,19 @@ class InverseKinematics(Node):
     # misnomer - doesn't calculate IK because calculated already in init and cached. Actually needed to advance the gait
     def ik_timer_callback(self):
         if self.joint_positions is not None:
-            target_ee, self.target_joint_positions = self.get_target_joint_positions()
+            target_ee, target_joint_positions = self.get_target_joint_positions()
+            
+            # FR = 0 -> start=0, end=3 -> [0:3]
+            # FL = 1 -> start=3, end=6 -> [3:6]
+            # BR = 2 -> start=6, end=9 -> [6:9]
+            # BL = 3 -> start=9, end=12 -> [9:12]
+            if DESIRED_LEG != Leg.ALL:
+                start = DESIRED_LEG * 3
+                end = (DESIRED_LEG + 1) * 3
+
+                target_ee = target_ee[start:end]
+                self.target_joint_positions = target_joint_positions[start:end]
+            
             current_ee = self.forward_kinematics(self.joint_positions)
 
             self.get_logger().info(
