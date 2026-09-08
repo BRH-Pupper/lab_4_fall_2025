@@ -56,25 +56,28 @@ class InverseKinematics(Node):
 
     def __init__(self):
         super().__init__('inverse_kinematics')
+        # set up subscriber to JointState topic and set up callback when msg arrives with queue depth=10
         self.joint_subscription = self.create_subscription(
             JointState,
             'joint_states',
             self.listener_callback,
             10)
         self.joint_subscription  # prevent unused variable warning
-
+        
+        # set up ROS publisher to forward command controller with Float64Array with queue depth=10
         self.command_publisher = self.create_publisher(
             Float64MultiArray,
             '/forward_command_controller/commands',
             10
         )
-
+        # initialize velocities, positions, and target positions of joints 
         self.joint_positions = None
         self.joint_velocities = None
         self.target_joint_positions = None
+        # initialize counter to keep track of idx of target joint and feet 
         self.counter = 0
 
-        # Trotting gate positions, already implemented
+        # Trotting gait positions(XYZ), already implemented
         touch_down_position = np.array([0.05, 0.0, -0.14])
         stand_position_1 = np.array([0.025, 0.0, -0.14])
         stand_position_2 = np.array([0.0, 0.0, -0.14])
@@ -83,8 +86,9 @@ class InverseKinematics(Node):
         mid_swing_position = np.array([0.0, 0.0, -0.05])
         
         ## trotting
-        
-        rf_ee_offset = np.array([0.06, -0.09, 0])
+        # Take positions defining gait and add offset of each foot to get trajectory  
+        # note each leg iterates through different order of trotting gait positions
+        rf_ee_offset = np.array([0.06, -0.09, 0]) # right front foot
         rf_ee_triangle_positions = np.array([
             touch_down_position,
             stand_position_1,
@@ -94,7 +98,7 @@ class InverseKinematics(Node):
             mid_swing_position,
         ]) + rf_ee_offset
         
-        lf_ee_offset = np.array([0.06, 0.09, 0])
+        lf_ee_offset = np.array([0.06, 0.09, 0]) # left fron foot
         lf_ee_triangle_positions = np.array([
             liftoff_position,
             mid_swing_position,
@@ -105,7 +109,7 @@ class InverseKinematics(Node):
 
         ]) + lf_ee_offset
         
-        rb_ee_offset = np.array([-0.11, -0.09, 0])
+        rb_ee_offset = np.array([-0.11, -0.09, 0]) # right back foot
         rb_ee_triangle_positions = np.array([
             liftoff_position,
             mid_swing_position,
@@ -115,7 +119,7 @@ class InverseKinematics(Node):
             stand_position_3,
         ]) + rb_ee_offset
         
-        lb_ee_offset = np.array([-0.11, 0.09, 0])
+        lb_ee_offset = np.array([-0.11, 0.09, 0]) # left back foot
         lb_ee_triangle_positions = np.array([
 
             touch_down_position,
@@ -126,15 +130,16 @@ class InverseKinematics(Node):
             mid_swing_position,
         ]) + lb_ee_offset
 
-
+        # store triangle trajectory of each foot and forward kinematics functions for each leg in a list for easy access
         self.ee_triangle_positions = [rf_ee_triangle_positions, lf_ee_triangle_positions, rb_ee_triangle_positions, lb_ee_triangle_positions]
         self.fk_functions = [self.fr_leg_fk, self.fl_leg_fk, self.br_leg_fk, self.bl_leg_fk]
-
+        # calculates IK ahead of time to get and cache target joint and position of each foot 
+        # interpolates the joints and position between each position in the gait trajectory
         self.target_joint_positions_cache, self.target_ee_cache = self.cache_target_joint_positions()
         print(f'shape of target_joint_positions_cache: {self.target_joint_positions_cache.shape}')
         print(f'shape of target_ee_cache: {self.target_ee_cache.shape}')
 
-
+        # define period of timers for PD and IK calculations
         self.pd_timer_period = 1.0 / 200  # 200 Hz
         self.ik_timer_period = 1.0 / 100   # 10 Hz
         self.pd_timer = self.create_timer(self.pd_timer_period, self.pd_timer_callback)
@@ -184,6 +189,7 @@ class InverseKinematics(Node):
     def forward_kinematics(self, theta):
         return np.concatenate([self.fk_functions[i](theta[3*i: 3*i+3]) for i in range(4)])
 
+    # callback to read msg to get position and velocities of joints of interest
     def listener_callback(self, msg):
         joints_of_interest = [
             'leg_front_r_1', 'leg_front_r_2', 'leg_front_r_3', 
@@ -194,6 +200,7 @@ class InverseKinematics(Node):
         self.joint_positions = np.array([msg.position[msg.name.index(joint)] for joint in joints_of_interest])
         self.joint_velocities = np.array([msg.velocity[msg.name.index(joint)] for joint in joints_of_interest])
 
+    # calculate IK - find desired foot position given angle 
     def inverse_kinematics_single_leg(self, target_ee, leg_index, initial_guess=[0, 0, 0]):
         leg_forward_kinematics = self.fk_functions[leg_index]
 
@@ -236,6 +243,7 @@ class InverseKinematics(Node):
 
         return theta
 
+    # interpolate point between gait positions
     def interpolate_triangle(self, t, leg_index):
        
         t = t%3
@@ -254,6 +262,7 @@ class InverseKinematics(Node):
          
         return start + (end - start)*(t%1)
 
+    # precomputes walking cycle joints and positions
     def cache_target_joint_positions(self):
         # Calculate and store the target joint positions for a cycle and all 4 legs
         target_joint_positions_cache = []
@@ -264,7 +273,9 @@ class InverseKinematics(Node):
             target_joint_positions = [0] * 3
             for t in np.arange(0, 1, 0.02):
                 print(t)
+                # get expected position of foot in gait cycle
                 target_ee = self.interpolate_triangle(t, leg_index)
+                # calculate the joint to achieve that foot position using IK
                 target_joint_positions = self.inverse_kinematics_single_leg(target_ee, leg_index, initial_guess=target_joint_positions)
 
                 target_joint_positions_cache[leg_index].append(target_joint_positions)
@@ -284,6 +295,8 @@ class InverseKinematics(Node):
             self.counter = 0
         return target_ee, target_joint_positions
 
+    # periodic callback to retrieve next frame from cache gait positions/cycle/target joint then calculate current foot position using FK
+    # misnomer - doesn't calculate IK because calculated already in init and cached. Actually needed to advance the gait
     def ik_timer_callback(self):
         if self.joint_positions is not None:
             target_ee, self.target_joint_positions = self.get_target_joint_positions()
@@ -296,6 +309,8 @@ class InverseKinematics(Node):
                 Target Angles to EE: {self.forward_kinematics(self.target_joint_positions)}, \
                 Current Angles: {self.joint_positions}')
 
+    # callback to publish target joint positions to controller
+    # misnomer - not actually calculating PD control, just sending msg
     def pd_timer_callback(self):
         if self.target_joint_positions is not None:
             command_msg = Float64MultiArray()
@@ -303,20 +318,24 @@ class InverseKinematics(Node):
             self.command_publisher.publish(command_msg)
 
 def main():
+    # initializes ros2 python client library
     rclpy.init()
+    # instaniates inverse kinematics node
     inverse_kinematics = InverseKinematics()
     
     try:
+        # keep node alive and listening for messages until interrupted
         rclpy.spin(inverse_kinematics)
     except KeyboardInterrupt:
         print("Program terminated by user")
     finally:
-        # Send zero torques
+        # Send zero torques to 4 legs * 3 joints = 12 torques
         zero_torques = Float64MultiArray()
         zero_torques.data = [0.0] * 12
         inverse_kinematics.command_publisher.publish(zero_torques)
-        
+        # destroy and clean ik node
         inverse_kinematics.destroy_node()
+        # clean up ros2 associated resources to be cleaned up
         rclpy.shutdown()
 
 if __name__ == '__main__':
