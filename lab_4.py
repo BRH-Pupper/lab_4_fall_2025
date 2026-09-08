@@ -73,7 +73,6 @@ def translation(x, y, z):
                     [0, 0, 1, z],
                     [0, 0, 0, 1],
                     ])
-    
 
 class InverseKinematics(Node):
 
@@ -97,6 +96,7 @@ class InverseKinematics(Node):
         self.joint_positions = None
         self.joint_velocities = None
         self.target_joint_positions = None
+        ## WARNING: self.t is no longer defined and a counter is used to iterate through gait trajectory positions
         # initialize counter to keep track of idx of target joint and feet 
         self.counter = 0
 
@@ -174,12 +174,14 @@ class InverseKinematics(Node):
         print(f'shape of target_joint_positions_cache: {self.target_joint_positions_cache.shape}')
         print(f'shape of target_ee_cache: {self.target_ee_cache.shape}')
 
-        # define period of timers for PD and IK calculations
-        self.pd_timer_period = 1.0 / 200  # 200 Hz
-        self.ik_timer_period = 1.0 / 100   # 10 Hz
+        # define period of timers for PD and IK calculations (defines how often we update the target joint positions)
+        # TODO someone needs ot make decision to determine speed of gait by update rate (self) 
+        # or defined gait period (i.e. self.ik_timer_period) or self.gate_period_cycle)
+        self.pd_timer_period = 1.0 / 200  # 200 Hz = 5ms
+        self.ik_timer_period = 1.0 / 100   #100 Hz = 10ms 
         self.pd_timer = self.create_timer(self.pd_timer_period, self.pd_timer_callback)
         self.ik_timer = self.create_timer(self.ik_timer_period, self.ik_timer_callback)
-
+        
 
     def fr_leg_fk(self, theta):
         # Already implemented in Lab 2
@@ -279,23 +281,56 @@ class InverseKinematics(Node):
         return theta
 
     # interpolate point between gait positions
+    #                              Mid-Swing
+    #                                 ○
+    #                               /   \
+    #                             /       \
+    #                           /           \
+    #                         /               \
+    #                       /                   \
+    #                     /                       \
+    #                   /                           \
+    #                 /                               \
+    #               ○ ------ ○ ------ ○ ------ ○ ------ ○
+    #           Lift-Off   Stand3  Stand2  Stand1   Touch Down
+    #              ←         ←        ←      ←          ← 
+    #
+    #                       Walking direction: ←
+    #
+    # Gait cycle:
+    # Touch Down -> Stand 1 -> Stand 2 -> Stand 3 -> Lift-Off
+    #            -> Mid-Swing -> Touch Down -> ...
+
     def interpolate_triangle(self, t, leg_index):
-       
-        t = t%3
-        start = None
-        end = None
-        v = self.ee_triangle_positions[leg_index]
-        if t<1:
-            start = v[0]
-            end = v[1]
-        elif t<2:
-            start = v[1]
-            end = v[2]
-        else:
-            start = v[2]
-            end = v[0]
-         
-        return start + (end - start)*(t%1)
+        
+        gait_positions = self.ee_triangle_positions[leg_index]
+        num_gait_pos = len(gait_positions)
+        gait_position_period = 1.0/num_gait_pos
+
+        start_segment_idx = int(t/gait_position_period)
+        next_segment_idx = (start_segment_idx + 1)%  num_gait_pos
+
+        start_pos = gait_positions[start_segment_idx]
+        next_pos = gait_positions[next_segment_idx]
+
+        segment_start_time = start_segment_idx * gait_position_period
+        segment_progress = (t - segment_start_time) / gait_position_period
+
+        return start_pos + (next_pos - start_pos) * segment_progress
+        # t = t%3
+        # start = None
+        # end = None
+        # v = self.ee_triangle_positions[leg_index]
+        # if t<1:
+        #     start = v[0]
+        #     end = v[1]
+        # elif t<2:
+        #     start = v[1]
+        #     end = v[2]
+        # else:
+        #     start = v[2]
+        #     end = v[0]
+        # return start + (end - start)*(t%1)
 
     # precomputes walking cycle joints and positions
     def cache_target_joint_positions(self):
@@ -306,7 +341,13 @@ class InverseKinematics(Node):
             target_joint_positions_cache.append([])
             target_ee_cache.append([])
             target_joint_positions = [0] * 3
-            for t in np.arange(0, 1, 0.02):
+            ## WARNING t is misnomer - doesn't really represent time anymore from lab 3
+            # t defines PROGRESS of the GAIT or percentage i.e. t = 0.20 = 20% of gait trajectory
+            ## TODO should be replaced with time to make more sense (EDSUN's opinion)
+            
+            TOTAL_GAIT_PROGRES = 1.0
+            GAIT_PROGRESS_INCREMENT = 0.02
+            for t in np.arange(0, TOTAL_GAIT_PROGRES, GAIT_PROGRESS_INCREMENT):
                 print(t)
                 # get expected position of foot in gait cycle
                 target_ee = self.interpolate_triangle(t, leg_index)
@@ -335,19 +376,24 @@ class InverseKinematics(Node):
     def ik_timer_callback(self):
         if self.joint_positions is not None:
             target_ee, target_joint_positions = self.get_target_joint_positions()
-            
+            current_ee = self.forward_kinematics(self.joint_positions)
+
             # FR = 0 -> start=0, end=3 -> [0:3]
             # FL = 1 -> start=3, end=6 -> [3:6]
             # BR = 2 -> start=6, end=9 -> [6:9]
             # BL = 3 -> start=9, end=12 -> [9:12]
-            if DESIRED_LEG != Leg.ALL:
+            if DESIRED_LEG != Leg.TOTAL:
                 start = DESIRED_LEG * 3
                 end = (DESIRED_LEG + 1) * 3
+                self.target_joint_positions = self.joint_positions.copy()
+                desired_ee = current_ee.copy()
 
-                target_ee = target_ee[start:end]
-                self.target_joint_positions = target_joint_positions[start:end]
-            
-            current_ee = self.forward_kinematics(self.joint_positions)
+                self.target_joint_positions[start:end] = target_joint_positions[start:end]
+                desired_ee[start:end] = target_ee[start:end]
+
+                target_ee = desired_ee
+            else:
+                self.target_joint_positions = target_joint_positions
 
             self.get_logger().info(
                 f'Target EE: {target_ee}, \
