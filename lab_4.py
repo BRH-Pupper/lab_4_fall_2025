@@ -182,7 +182,8 @@ class InverseKinematics(Node):
         self.pd_timer = self.create_timer(self.pd_timer_period, self.pd_timer_callback)
         self.ik_timer = self.create_timer(self.ik_timer_period, self.ik_timer_callback)
         
-
+        self.gait_cycle_period_sec = 6.0 # one second per position
+        
     def fr_leg_fk(self, theta):
         # Already implemented in Lab 2
         T_RF_0_1 = translation(0.07500, -0.08350, 0) @ rotation_x(1.57080) @ rotation_z(theta[0])
@@ -302,21 +303,35 @@ class InverseKinematics(Node):
     #            -> Mid-Swing -> Touch Down -> ...
 
     def interpolate_triangle(self, t, leg_index):
-        
+        # version 2
         gait_positions = self.ee_triangle_positions[leg_index]
-        num_gait_pos = len(gait_positions)
-        gait_position_period = 1.0/num_gait_pos
+        t = t%len(gait_positions)
 
-        start_segment_idx = int(t/gait_position_period)
-        next_segment_idx = (start_segment_idx + 1)%  num_gait_pos
+        gait_segment_time_sec = 1.0
 
-        start_pos = gait_positions[start_segment_idx]
-        next_pos = gait_positions[next_segment_idx]
+        gait_segement_idx = int(t/gait_segment_time_sec)
+        next_sgement_idx = gait_segement_idx+1
 
-        segment_start_time = start_segment_idx * gait_position_period
-        segment_progress = (t - segment_start_time) / gait_position_period
+        start_pos = gait_positions(gait_segement_idx)
+        end_pos = gait_positions(next_sgement_idx)
+     
+        return start_pos + (end_pos - start_pos)*((t%gait_segment_time_sec)/ gait_segment_time_sec)
+        # version 1
+        # gait_positions = self.ee_triangle_positions[leg_index]
+        # num_gait_pos = len(gait_positions)
+        # gait_position_period = 1.0/num_gait_pos
 
-        return start_pos + (next_pos - start_pos) * segment_progress
+        # start_segment_idx = int(t/gait_position_period)
+        # next_segment_idx = (start_segment_idx + 1)%  num_gait_pos
+
+        # start_pos = gait_positions[start_segment_idx]
+        # next_pos = gait_positions[next_segment_idx]
+
+        # segment_start_time = start_segment_idx * gait_position_period
+        # segment_progress = (t - segment_start_time) / gait_position_period
+
+        # return start_pos + (next_pos - start_pos) * segment_progress
+        # version 0
         # t = t%3
         # start = None
         # end = None
@@ -345,9 +360,10 @@ class InverseKinematics(Node):
             # t defines PROGRESS of the GAIT or percentage i.e. t = 0.20 = 20% of gait trajectory
             ## TODO should be replaced with time to make more sense (EDSUN's opinion)
             
-            TOTAL_GAIT_PROGRES = 1.0
-            GAIT_PROGRESS_INCREMENT = 0.02
-            for t in np.arange(0, TOTAL_GAIT_PROGRES, GAIT_PROGRESS_INCREMENT):
+            TOTAL_GAIT_PROGRES = 1.0 #deprec
+            GAIT_PROGRESS_INCREMENT = 0.02 #deprec
+
+            for t in np.arange(0, self.gait_cycle_period_sec, self.ik_timer_period):
                 print(t)
                 # get expected position of foot in gait cycle
                 target_ee = self.interpolate_triangle(t, leg_index)
@@ -377,7 +393,7 @@ class InverseKinematics(Node):
         if self.joint_positions is not None:
             target_ee, target_joint_positions = self.get_target_joint_positions()
             current_ee = self.forward_kinematics(self.joint_positions)
-
+            
             # FR = 0 -> start=0, end=3 -> [0:3]
             # FL = 1 -> start=3, end=6 -> [3:6]
             # BR = 2 -> start=6, end=9 -> [6:9]
@@ -394,6 +410,8 @@ class InverseKinematics(Node):
                 target_ee = desired_ee
             else:
                 self.target_joint_positions = target_joint_positions
+
+            self.t = self.t + self.ik_timer_period
 
             self.get_logger().info(
                 f'Target EE: {target_ee}, \
