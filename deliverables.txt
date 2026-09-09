@@ -1,0 +1,35 @@
+Lab 4 Deliverables/Questions
+
+Part 2:
+DELIVERABLE: You might notice that the fr_leg_fk method pre-implemented in lab_4.py looks different than your implementation from lab 3. Are they functionally different? If so, why do we need to make these changes here? If not, how are they empirically the same?
+
+DELIVERABLE: An underactuated system that has more degrees of freedom that can be controlled, than the number of independently controlled actuators. How many degrees of freedom does Pupper have? Is it an underactuated system?
+
+DELIVERABLE: Why are under-actuated systems more challenging to control?
+
+Part 3: 
+DELIVERABLE: You have implemented trotting. What are some other gaits that Pupper could exhibit, and why/when would they be useful? List 3 alternative gaits.
+
+DELIVERABLE: What are some potential setbacks that may prevent Pupper from exhibiting these gaits you listed above?
+
+Part 5: 
+DELIVERABLE: Take a video of the robot performing the trotting gait and submit it with your submission. This can be taken with Pupper on the stand.
+
+DELIVERABLE: The controller implemented is a “heuristic” controller. That means it follows a pre-programmed trajectory, and doesn’t use online (real-time) sensor feedback outside the motor to optimize its trajectory. What are some potential pitfalls of this approach? How will Pupper react if you push it?
+
+DELIVERABLE: Many commercial quadrupeds once used model-based controllers that solve an optimization problem online (they all shift to reinforcement learning-based controllers now for locomotion). Why would it be challenging to deploy MBC/MPC on Pupper, which has a lower cost hardware and runs computation on a Raspberry Pi 5?
+
+Part 6: 
+DELIVERABLE: Implement two gaits for Pupper. Make Pupper walk fast, and walk slow. Include videos of Pupper walking fast and walking slow with your submission to Gradescope
+
+DELIVERABLE: In your lab document, report on:
+a. The effects of different trajectory shapes on the trotting gait
+
+b. How timer periods affect the system’s performance
+
+c. How does the center of mass affect performance?
+
+Part 7:
+DELIVERABLE: Report on what you tried to make Pupper go faster. What worked and what didn’t?
+
+DELIVERABLE: Take a video of you timing Pupper completing the course, and report the fastest time you were able to make Pupper go!
