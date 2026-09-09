@@ -15,7 +15,7 @@ class Leg(IntEnum):
     BACK_LEFT = 3
     TOTAL = 4
 ## VERY IMPORTANT - THIS VARIABLE MUST BE SET AND DETERMINE WHAT LEG TO MOVE (USED FOR DEBUGGING)
-DESIRED_LEG = Leg.FRONT_RIGHT
+DESIRED_LEG = Leg.FRONT_LEFT
 
 ## SEE https://www.youtube.com/watch?v=IsxojXns5Jg
 class Gait(IntEnum):
@@ -157,14 +157,18 @@ class InverseKinematics(Node):
         rf_ee_triangle_positions = gait_array[DESIRED_GAIT][Leg.FRONT_RIGHT] + rf_ee_offset
         
         lf_ee_offset = np.array([0.06, 0.09, 0]) # left front foot
-        lf_ee_triangle_positions = gait_array[DESIRED_GAIT][Leg.FRONT_LEFT] + rf_ee_offset
+        lf_ee_triangle_positions = gait_array[DESIRED_GAIT][Leg.FRONT_LEFT] + lf_ee_offset
         
         rb_ee_offset = np.array([-0.11, -0.09, 0]) # right back foot
         rb_ee_triangle_positions = gait_array[DESIRED_GAIT][Leg.BACK_RIGHT] + rb_ee_offset
         
         lb_ee_offset = np.array([-0.11, 0.09, 0]) # left back foot
         lb_ee_triangle_positions = gait_array[DESIRED_GAIT][Leg.BACK_LEFT] + lb_ee_offset
-
+        ## TODO make the pupper limit limp or moved away
+        ## TODO have it based on cycler period for the line 
+        ## TODO define the period of each sgement of the gait, put it in the dictioary
+        ## TODO have them contain in a constant above onthe length of the gait 
+        self.gait_cycle_period_sec = 3.0 # one second per position 
         # store triangle trajectory of each foot and forward kinematics functions for each leg in a list for easy access
         self.ee_triangle_positions = [rf_ee_triangle_positions, lf_ee_triangle_positions, rb_ee_triangle_positions, lb_ee_triangle_positions]
         self.fk_functions = [self.fr_leg_fk, self.fl_leg_fk, self.br_leg_fk, self.bl_leg_fk]
@@ -177,12 +181,11 @@ class InverseKinematics(Node):
         # define period of timers for PD and IK calculations (defines how often we update the target joint positions)
         # TODO someone needs ot make decision to determine speed of gait by update rate (self) 
         # or defined gait period (i.e. self.ik_timer_period) or self.gate_period_cycle)
+        # TODO also determine the number of interval of the cached valued, or how granular (eventually == to the period )
         self.pd_timer_period = 1.0 / 200  # 200 Hz = 5ms
         self.ik_timer_period = 1.0 / 100   #100 Hz = 10ms 
         self.pd_timer = self.create_timer(self.pd_timer_period, self.pd_timer_callback)
         self.ik_timer = self.create_timer(self.ik_timer_period, self.ik_timer_callback)
-        
-        self.gait_cycle_period_sec = 6.0 # one second per position
         
     def fr_leg_fk(self, theta):
         # Already implemented in Lab 2
@@ -200,8 +203,8 @@ class InverseKinematics(Node):
                 
         T_FL_0_1 = translation(0.07500, 0.08350, 0) @ rotation_x(-1.57080) @ rotation_z(theta[0])
         T_FL_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
-        T_FL_2_3 = translation(0, -0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
-        T_FL_3_ee = translation(0.06231, -0.06216, 0.01800)
+        T_FL_2_3 = translation(0, 0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
+        T_FL_3_ee = translation(0.06231, 0.06216, 0.01800)
         T_FL_0_ee = T_FL_0_1 @ T_FL_1_2 @ T_FL_2_3 @ T_FL_3_ee
         return T_FL_0_ee[:3, 3]
 
@@ -301,51 +304,23 @@ class InverseKinematics(Node):
     # Gait cycle:
     # Touch Down -> Stand 1 -> Stand 2 -> Stand 3 -> Lift-Off
     #            -> Mid-Swing -> Touch Down -> ...
-
+    ## TODO doesn't know which gait segment it is in so we can allocate specific time for each, so must all match
+    ## TODO make the legs move away from the rest or enforce guardrails or prevent intersections 
     def interpolate_triangle(self, t, leg_index):
-        # version 2
         gait_positions = self.ee_triangle_positions[leg_index]
-        t = t%len(gait_positions)
+        num_gait_pos = len(gait_positions)
+        gait_position_period = self.gait_cycle_period_sec/num_gait_pos
 
-        gait_segment_time_sec = 1.0
+        start_segment_idx = int(t/gait_position_period)
+        next_segment_idx = (start_segment_idx + 1)%  num_gait_pos
 
-        gait_segement_idx = int(t/gait_segment_time_sec)
-        next_sgement_idx = gait_segement_idx+1
+        start_pos = gait_positions[start_segment_idx]
+        next_pos = gait_positions[next_segment_idx]
 
-        start_pos = gait_positions(gait_segement_idx)
-        end_pos = gait_positions(next_sgement_idx)
-     
-        return start_pos + (end_pos - start_pos)*((t%gait_segment_time_sec)/ gait_segment_time_sec)
-        # version 1
-        # gait_positions = self.ee_triangle_positions[leg_index]
-        # num_gait_pos = len(gait_positions)
-        # gait_position_period = 1.0/num_gait_pos
+        segment_start_time = start_segment_idx * gait_position_period
+        segment_progress = (t - segment_start_time) / gait_position_period
 
-        # start_segment_idx = int(t/gait_position_period)
-        # next_segment_idx = (start_segment_idx + 1)%  num_gait_pos
-
-        # start_pos = gait_positions[start_segment_idx]
-        # next_pos = gait_positions[next_segment_idx]
-
-        # segment_start_time = start_segment_idx * gait_position_period
-        # segment_progress = (t - segment_start_time) / gait_position_period
-
-        # return start_pos + (next_pos - start_pos) * segment_progress
-        # version 0
-        # t = t%3
-        # start = None
-        # end = None
-        # v = self.ee_triangle_positions[leg_index]
-        # if t<1:
-        #     start = v[0]
-        #     end = v[1]
-        # elif t<2:
-        #     start = v[1]
-        #     end = v[2]
-        # else:
-        #     start = v[2]
-        #     end = v[0]
-        # return start + (end - start)*(t%1)
+        return start_pos + (next_pos - start_pos) * segment_progress
 
     # precomputes walking cycle joints and positions
     def cache_target_joint_positions(self):
@@ -363,7 +338,7 @@ class InverseKinematics(Node):
             TOTAL_GAIT_PROGRES = 1.0 #deprec
             GAIT_PROGRESS_INCREMENT = 0.02 #deprec
 
-            for t in np.arange(0, self.gait_cycle_period_sec, self.ik_timer_period):
+            for t in np.arange(0, self.gait_cycle_period_sec, GAIT_PROGRESS_INCREMENT):
                 print(t)
                 # get expected position of foot in gait cycle
                 target_ee = self.interpolate_triangle(t, leg_index)
@@ -410,8 +385,6 @@ class InverseKinematics(Node):
                 target_ee = desired_ee
             else:
                 self.target_joint_positions = target_joint_positions
-
-            self.t = self.t + self.ik_timer_period
 
             self.get_logger().info(
                 f'Target EE: {target_ee}, \
