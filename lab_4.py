@@ -15,7 +15,7 @@ class Leg(IntEnum):
     BACK_LEFT = 3
     TOTAL = 4
 ## VERY IMPORTANT - THIS VARIABLE MUST BE SET AND DETERMINE WHAT LEG TO MOVE (USED FOR DEBUGGING)
-DESIRED_LEG = Leg.FRONT_LEFT
+DESIRED_LEG = Leg.TOTAL
 
 ## SEE https://www.youtube.com/watch?v=IsxojXns5Jg
 class Gait(IntEnum):
@@ -23,7 +23,8 @@ class Gait(IntEnum):
     WALKING = 1
     CANTER = 2
     GALLOP = 3
-    TOTAL = 4
+    SYNC = 4
+    TOTAL = 5
 
 ## VERY IMPORTANT - THIS VARIABLE MUST BE SET TO DETERMINE WHAT GAIT TO USE
 DESIRED_GAIT = Gait.TROTTING
@@ -115,7 +116,6 @@ class InverseKinematics(Node):
         s3 = stand_position_3
         lo = liftoff_position
         ms = mid_swing_position
-
         # array to better organize the gaits for each foot
         gait_array = {
             Gait.TROTTING: 
@@ -147,7 +147,15 @@ class InverseKinematics(Node):
                 Leg.FRONT_LEFT: np.array([]),
                 Leg.BACK_RIGHT: np.array([]),
                 Leg.BACK_LEFT: np.array([])
+            },
+            Gait.SYNC:
+            {
+                Leg.FRONT_RIGHT: np.array([td, s1, s2, s3, lo, ms]),
+                Leg.FRONT_LEFT: np.array([td, s1, s2, s3, lo, ms]),
+                Leg.BACK_RIGHT: np.array([td, s1, s2, s3, lo, ms]),
+                Leg.BACK_LEFT: np.array([td, s1, s2, s3, lo, ms])
             }
+
         }
         
         ## trotting
@@ -213,6 +221,7 @@ class InverseKinematics(Node):
     # note: translation(0.07500, -0.08350, 0) = 75mm forward, 83.5mm to the right, 0mm up
     # Move the frame to the joint center and orient its local Z-axis along
     # the joint's rotation axis. theta then represents rotation about this Z-axis.
+    # y dir: for front legs 0.0445 + 0.0390 = 0.0835
     def fr_leg_fk(self, theta):
         # Already implemented in Lab 2
         # rotate +x so that z axis points out of robot (y points up & x remains forward)
@@ -229,7 +238,6 @@ class InverseKinematics(Node):
         ################################################################################################
         # TODO: implement forward kinematics here
         ################################################################################################
-        # note 
         # rotate -x so that z axis points out of robot (y points down & x remains forward)        
         T_FL_0_1 = translation(0.07500, 0.08350, 0) @ rotation_x(-1.57080) @ rotation_z(theta[0])
         # rotate -y so that z axis points to the back with upper leg point behind (x points out robot & y remains down)
@@ -239,12 +247,14 @@ class InverseKinematics(Node):
         T_FL_3_ee = translation(0.06231, 0.06216, 0.01800)
         T_FL_0_ee = T_FL_0_1 @ T_FL_1_2 @ T_FL_2_3 @ T_FL_3_ee
         return T_FL_0_ee[:3, 3]
-
+    # y dir: for back legs  0.0335 + 0.0390 = 0.0725
     def br_leg_fk(self, theta):
+        # same rotations as front right leg and same local translations
+        # translate the strating origin to -x (note different rear width hence diff y) 
         T_BR_0_1 = translation(-0.07500, -0.0725, 0) @ rotation_x(1.57080) @ rotation_z(theta[0])
         T_BR_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
         T_BR_2_3 = translation(0, -0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
-        T_BR_3_ee = translation(-0.06231, -0.06216, 0.01800)
+        T_BR_3_ee = translation(0.06231, -0.06216, 0.01800)
         T_BR_0_ee = T_BR_0_1 @ T_BR_1_2 @ T_BR_2_3 @ T_BR_3_ee
         return T_BR_0_ee[:3, 3]
 
@@ -252,10 +262,12 @@ class InverseKinematics(Node):
         ################################################################################################
         # TODO: implement forward kinematics here
         ################################################################################################
+        # same rotations as front right leg and same local translations
+        # translate the strating origin to -x (note different rear width hence diff y) 
         T_BL_0_1 = translation(-0.07500, 0.0725, 0) @ rotation_x(-1.57080) @ rotation_z(theta[0])
         T_BL_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
-        T_BL_2_3 = translation(0, -0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
-        T_BL_3_ee = translation(-0.06231, 0.06216, 0.01800)
+        T_BL_2_3 = translation(0, 0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
+        T_BL_3_ee = translation(0.06231, 0.06216, 0.01800)
         T_BL_0_ee = T_BL_0_1 @ T_BL_1_2 @ T_BL_2_3 @ T_BL_3_ee
         return T_BL_0_ee[:3, 3]
 
@@ -364,10 +376,10 @@ class InverseKinematics(Node):
             target_joint_positions = [0] * 3
             ## WARNING t is misnomer - doesn't really represent time anymore from lab 3
             # t defines PROGRESS of the GAIT or percentage i.e. t = 0.20 = 20% of gait trajectory
-            ## TODO should be replaced with time to make more sense (EDSUN's opinion)
+            ## TODO should be replaced with time or update rate to make more sense (EDSUN's opinion)
             
             GAIT_PROGRESS_INCREMENT = 0.02 #deprec
-
+        
             for t in np.arange(0, self.gait_cycle_period_sec, GAIT_PROGRESS_INCREMENT):
                 print(t)
                 # get expected position of foot in gait cycle
