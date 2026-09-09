@@ -165,9 +165,6 @@ class InverseKinematics(Node):
         lb_ee_offset = np.array([-0.11, 0.09, 0]) # left back foot
         lb_ee_triangle_positions = gait_array[DESIRED_GAIT][Leg.BACK_LEFT] + lb_ee_offset
         ## TODO make the pupper limit limp or moved away
-        ## TODO have it based on cycler period for the line 
-        ## TODO define the period of each sgement of the gait, put it in the dictioary
-        ## TODO have them contain in a constant above onthe length of the gait 
         self.gait_cycle_period_sec = 3.0 # one second per position 
         # store triangle trajectory of each foot and forward kinematics functions for each leg in a list for easy access
         self.ee_triangle_positions = [rf_ee_triangle_positions, lf_ee_triangle_positions, rb_ee_triangle_positions, lb_ee_triangle_positions]
@@ -179,30 +176,65 @@ class InverseKinematics(Node):
         print(f'shape of target_ee_cache: {self.target_ee_cache.shape}')
 
         # define period of timers for PD and IK calculations (defines how often we update the target joint positions)
-        # TODO someone needs ot make decision to determine speed of gait by update rate (self) 
         # or defined gait period (i.e. self.ik_timer_period) or self.gate_period_cycle)
-        # TODO also determine the number of interval of the cached valued, or how granular (eventually == to the period )
         self.pd_timer_period = 1.0 / 200  # 200 Hz = 5ms
         self.ik_timer_period = 1.0 / 100   #100 Hz = 10ms 
         self.pd_timer = self.create_timer(self.pd_timer_period, self.pd_timer_callback)
         self.ik_timer = self.create_timer(self.ik_timer_period, self.ik_timer_callback)
-        
+    
+    # refer back to lab 2
+    # note that translation(x, y, z) - follow right hand rule: https://en.wikipedia.org/wiki/Right-hand_rule
+    # example looking at robot original coord sys
+    #                  +X
+    #                FORWARD
+    #                   ↑
+    #                   |
+    #   FRONT LEFT      |      FRONT RIGHT
+    #                   |
+    #      +Y  ←────────●────────→  -Y
+    #                  BODY
+    #                   |
+    #                   |
+    #    REAR LEFT      |      REAR RIGHT
+    #                   |
+    #                   ↓
+    #                  -X
+    #                 BACK
+    #
+    #                 ⊙ +Z
+    #              OUT OF PAGE
+    #
+    #                 ⊗ -Z
+    #               INTO PAGE
+    #                (ground)
+    # note: rotation_x(1.57080) = rotate +90 degree on the x axis  
+    # for rotation see https://en.wikipedia.org/wiki/Right-hand_rule
+    # we want to rotate the coordinate system so that controls rotation is along z axis 
+    # note: translation(0.07500, -0.08350, 0) = 75mm forward, 83.5mm to the right, 0mm up
+    # Move the frame to the joint center and orient its local Z-axis along
+    # the joint's rotation axis. theta then represents rotation about this Z-axis.
     def fr_leg_fk(self, theta):
         # Already implemented in Lab 2
-        T_RF_0_1 = translation(0.07500, -0.08350, 0) @ rotation_x(1.57080) @ rotation_z(theta[0])
+        # rotate +x so that z axis points out of robot (y points up & x remains forward)
+        T_RF_0_1 = translation(0.07500, -0.08350, 0) @ rotation_x(1.57080) @ rotation_z(theta[0]) 
+        # rotate -y so that z axis points to the back with upper leg point behind (x points out of robot & y remains up)
         T_RF_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
+        # rotate +y so that z axis point out of robot with lower leg point down (x points forward & y remains up)
         T_RF_2_3 = translation(0, -0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
         T_RF_3_ee = translation(0.06231, -0.06216, 0.01800)
         T_RF_0_ee = T_RF_0_1 @ T_RF_1_2 @ T_RF_2_3 @ T_RF_3_ee
         return T_RF_0_ee[:3, 3]
-
+    
     def fl_leg_fk(self, theta):
         ################################################################################################
         # TODO: implement forward kinematics here
         ################################################################################################
-                
+        # note 
+        # rotate -x so that z axis points out of robot (y points down & x remains forward)        
         T_FL_0_1 = translation(0.07500, 0.08350, 0) @ rotation_x(-1.57080) @ rotation_z(theta[0])
+        # rotate -y so that z axis points to the back with upper leg point behind (x points out robot & y remains down)
         T_FL_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
+        # rotate -y so that z axis points to the back with upper leg point behind (x points forward & y remains down)
         T_FL_2_3 = translation(0, 0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
         T_FL_3_ee = translation(0.06231, 0.06216, 0.01800)
         T_FL_0_ee = T_FL_0_1 @ T_FL_1_2 @ T_FL_2_3 @ T_FL_3_ee
@@ -212,7 +244,7 @@ class InverseKinematics(Node):
         T_BR_0_1 = translation(-0.07500, -0.0725, 0) @ rotation_x(1.57080) @ rotation_z(theta[0])
         T_BR_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
         T_BR_2_3 = translation(0, -0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
-        T_BR_3_ee = translation(0.06231, -0.06216, 0.01800)
+        T_BR_3_ee = translation(-0.06231, -0.06216, 0.01800)
         T_BR_0_ee = T_BR_0_1 @ T_BR_1_2 @ T_BR_2_3 @ T_BR_3_ee
         return T_BR_0_ee[:3, 3]
 
@@ -223,7 +255,7 @@ class InverseKinematics(Node):
         T_BL_0_1 = translation(-0.07500, 0.0725, 0) @ rotation_x(-1.57080) @ rotation_z(theta[0])
         T_BL_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
         T_BL_2_3 = translation(0, -0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
-        T_BL_3_ee = translation(0.06231, -0.06216, 0.01800)
+        T_BL_3_ee = translation(-0.06231, 0.06216, 0.01800)
         T_BL_0_ee = T_BL_0_1 @ T_BL_1_2 @ T_BL_2_3 @ T_BL_3_ee
         return T_BL_0_ee[:3, 3]
 
@@ -304,7 +336,6 @@ class InverseKinematics(Node):
     # Gait cycle:
     # Touch Down -> Stand 1 -> Stand 2 -> Stand 3 -> Lift-Off
     #            -> Mid-Swing -> Touch Down -> ...
-    ## TODO doesn't know which gait segment it is in so we can allocate specific time for each, so must all match
     ## TODO make the legs move away from the rest or enforce guardrails or prevent intersections 
     def interpolate_triangle(self, t, leg_index):
         gait_positions = self.ee_triangle_positions[leg_index]
@@ -335,7 +366,6 @@ class InverseKinematics(Node):
             # t defines PROGRESS of the GAIT or percentage i.e. t = 0.20 = 20% of gait trajectory
             ## TODO should be replaced with time to make more sense (EDSUN's opinion)
             
-            TOTAL_GAIT_PROGRES = 1.0 #deprec
             GAIT_PROGRESS_INCREMENT = 0.02 #deprec
 
             for t in np.arange(0, self.gait_cycle_period_sec, GAIT_PROGRESS_INCREMENT):
