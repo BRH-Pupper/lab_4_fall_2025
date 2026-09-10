@@ -18,13 +18,15 @@ class Leg(IntEnum):
 DESIRED_LEG = Leg.TOTAL
 
 ## SEE https://www.youtube.com/watch?v=IsxojXns5Jg
+## Note - gallop gait is difficult because requires changing trajectory so that all 4 legs need to jump and are off the ground 
 class Gait(IntEnum):
     TROTTING = 0
     WALKING = 1
     CANTER = 2
     GALLOP = 3
     SYNC = 4
-    TOTAL = 5
+    FOX_TROT = 5
+    TOTAL = 6
 
 ## VERY IMPORTANT - THIS VARIABLE MUST BE SET TO DETERMINE WHAT GAIT TO USE
 DESIRED_GAIT = Gait.TROTTING
@@ -117,6 +119,7 @@ class InverseKinematics(Node):
         lo = liftoff_position
         ms = mid_swing_position
         # array to better organize the gaits for each foot
+        # all possible gaits: https://www.youtube.com/@horsesandus2347/videos
         gait_array = {
             Gait.TROTTING: 
             {
@@ -127,26 +130,37 @@ class InverseKinematics(Node):
                 Leg.BACK_LEFT: np.array([td, s1, s2, s3, lo, ms])
             },
             # NOTE: these below are unimplemented 
+            # https://www.youtube.com/watch?v=ZwKdHJdCMgg
             Gait.WALKING: 
             {
-                Leg.FRONT_RIGHT: np.array([]),
-                Leg.FRONT_LEFT: np.array([]),
-                Leg.BACK_RIGHT: np.array([]),
-                Leg.BACK_LEFT: np.array([])
+                Leg.FRONT_RIGHT: np.array([lo, ms, td, s1, s1, s1, s2, s2, s2, s3, s3, s3]),
+                Leg.FRONT_LEFT: np.array([s2, s2, s2, s3, s3, s3, lo, ms, td, s1, s1, s1]),
+                Leg.BACK_RIGHT: np.array([s1, s1, s1, s2, s2, s2, s3, s3, s3, lo, ms, td]),
+                Leg.BACK_LEFT: np.array([s3, s3, s3, lo, ms, td, s1, s1, s1, s2, s2, s2])
             },
+            # https://www.youtube.com/watch?v=dXkhTtzM2yU
             Gait.CANTER:
             {
-                Leg.FRONT_RIGHT: np.array([]),
-                Leg.FRONT_LEFT: np.array([]),
-                Leg.BACK_RIGHT: np.array([]),
-                Leg.BACK_LEFT: np.array([])
+                Leg.FRONT_RIGHT: np.array([lo, ms, td, s1, s2, s3]),
+                Leg.FRONT_LEFT: np.array([s3, lo, ms, td, s1, s2]),
+                Leg.BACK_RIGHT: np.array([s3, lo, ms, td, s1, s2]),
+                Leg.BACK_LEFT: np.array([s2, s3, lo, ms, td, s1])
             },
+            # https://www.youtube.com/watch?v=pNUHMqDZlCc
             Gait.GALLOP:
             {
-                Leg.FRONT_RIGHT: np.array([]),
-                Leg.FRONT_LEFT: np.array([]),
-                Leg.BACK_RIGHT: np.array([]),
-                Leg.BACK_LEFT: np.array([])
+                Leg.FRONT_RIGHT: np.array([s3, lo, ms, td, s1, s2]),
+                Leg.FRONT_LEFT: np.array([s2, s3, lo, ms, td, s1]),
+                Leg.BACK_RIGHT: np.array([s1, s2, s3, lo, ms, td]),
+                Leg.BACK_LEFT: np.array([td, s1, s2, s3, lo, ms])
+            },
+            # https://www.youtube.com/watch?v=UBsqoBxvONY
+            Gait.FOX_TROT:
+            {
+                Leg.FRONT_RIGHT: np.array([lo, ms, td, s1, s2, s3]),
+                Leg.FRONT_LEFT: np.array([s2, s3, lo, ms, td, s1]),
+                Leg.BACK_RIGHT: np.array([s3, lo, ms, td, s1, s2]),
+                Leg.BACK_LEFT: np.array([s1, s2, s3, lo, ms, td])
             },
             Gait.SYNC:
             {
