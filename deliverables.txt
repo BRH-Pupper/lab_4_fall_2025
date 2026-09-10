@@ -2,25 +2,57 @@ Lab 4 Deliverables/Questions
 
 Part 2:
 DELIVERABLE: You might notice that the fr_leg_fk method pre-implemented in lab_4.py looks different than your implementation from lab 3. Are they functionally different? If so, why do we need to make these changes here? If not, how are they empirically the same?
+Functionally they maybe different because when rotating or translating to each joint, each may use a different coordinate system frame.
+However, they are functionally the same as shaft of the joint is along the z axis and has a defined direction for positive torque
 
 DELIVERABLE: An underactuated system that has more degrees of freedom that can be controlled, than the number of independently controlled actuators. How many degrees of freedom does Pupper have? Is it an underactuated system?
+Underactuated - fewer motors than degrees of freedom
+degrees of freedom - number of independent variables to describe robot configuration
+See Grubler-Kutzbach formula
+
+Each pupper leg has 3 revolute joints or motors so can 3 rotationl DOFs. 
+In total, pupper has 4 legs so 12 rotation DOFs.
+
+Add 6 more (xyz, roll-pitch-yaw) for the body into the body so robot has 18 DOFs
+
+There are in total, have 12 actuators. 
+
+Given 12 actuators yet 18 DOFs, we are underactuated
 
 DELIVERABLE: Why are under-actuated systems more challenging to control?
+You have less actuators to accomplish a specific degree of freedom. You cannot command every DOF. 
 
 Part 3: 
 DELIVERABLE: You have implemented trotting. What are some other gaits that Pupper could exhibit, and why/when would they be useful? List 3 alternative gaits.
+Trotting - medium speed- balance between speed and stability because 2 feet on gnd 
+Walking - each foot touch gnd independently - slow and steady 
+Canter - medium-fast speed with 3 beats, asymmetric - between trotting and gallop 
+Gallop - Fastest gait with a bit of a leap - useful when pupper needs to chase or run fast
 
 DELIVERABLE: What are some potential setbacks that may prevent Pupper from exhibiting these gaits you listed above?
+Timing is very important to exhibit proper gait + having proper FK and IK to be implemented so that joints rotate accordingly
+Depending on speed, might introduce trauma and vibration that can break the leg
+Gait is inflexible cycle, not easily adapted during runtime - requires a lot of calculations and parameters
 
 Part 5: 
 DELIVERABLE: Take a video of the robot performing the trotting gait and submit it with your submission. This can be taken with Pupper on the stand.
+* Shared trotting video with the group
 
 DELIVERABLE: The controller implemented is a “heuristic” controller. That means it follows a pre-programmed trajectory, and doesn’t use online (real-time) sensor feedback outside the motor to optimize its trajectory. What are some potential pitfalls of this approach? How will Pupper react if you push it?
+* heuristic - shortcut that usually works (following pre-programmed trajectory), not always correct.
+Setbacks is that following pre-programmed trajectory makes it inflexible and inability to adapt especially if it encounters obstacles or the body is pushed or if the leg is broken
 
 DELIVERABLE: Many commercial quadrupeds once used model-based controllers that solve an optimization problem online (they all shift to reinforcement learning-based controllers now for locomotion). Why would it be challenging to deploy MBC/MPC on Pupper, which has a lower cost hardware and runs computation on a Raspberry Pi 5?
+MBC = model based control - use the info like mass, inertia, torque, contact to inform how to move
+MPC = model predictive control - type of MBC uses math model to control robot and predict the future while optimizing actions
+
+Models requires a lot of training and modeling whose input and output model can be bigger than raspi5 can handle.
+Also, model requires many streams of input from sensors so raspi5 have limited hardware interfaces to communicate sensors, limited bandwidth for all information, limited buses, and limited processing to queue and process the inputs
 
 Part 6: 
 DELIVERABLE: Implement two gaits for Pupper. Make Pupper walk fast, and walk slow. Include videos of Pupper walking fast and walking slow with your submission to Gradescope
+WALKING: 
+GALLOP: 
 
 DELIVERABLE: In your lab document, report on:
 a. The effects of different trajectory shapes on the trotting gait
@@ -28,7 +60,7 @@ a. The effects of different trajectory shapes on the trotting gait
 b. How timer periods affect the system’s performance
 
 c. How does the center of mass affect performance?
-
+    
 Part 7:
 DELIVERABLE: Report on what you tried to make Pupper go faster. What worked and what didn’t?
 
