@@ -141,10 +141,14 @@ class InverseKinematics(Node):
         self.ik_timer = self.create_timer(self.ik_timer_period, self.ik_timer_callback)
 
 
+
+
     def fr_leg_fk(self, theta):
         # Already implemented in Lab 2
-        T_RF_0_1 = translation(0.07500, -0.08350, 0) @ rotation_x(1.57080) @ rotation_z(theta[0])
-        T_RF_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
+        T_RF_0_1 = translation(0.07500, -0.08350, 0) @ rotation_x(1.57080) @ rotation_z(theta[0]) #note all rotationz are positive as Z points in the direction of motor encoder (different from lab2)
+        #they are combining the two translation matrices such that they add 0.0445 to 0.039 and going straight from 0 to 2 translation
+        #this is done to reduce a computation as it wont matter in this matrix multiplication
+        T_RF_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1]) # no translation needed here
         T_RF_2_3 = translation(0, -0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
         T_RF_3_ee = translation(0.06231, -0.06216, 0.01800)
         T_RF_0_ee = T_RF_0_1 @ T_RF_1_2 @ T_RF_2_3 @ T_RF_3_ee
@@ -155,7 +159,8 @@ class InverseKinematics(Node):
         # TODO: implement forward kinematics here
         ################################################################################################
                 
-        T_FL_0_1 = translation(0.07500, 0.08350, 0) @ rotation_x(-1.57080) @ rotation_z(theta[0])
+        T_FL_0_1 = translation(0.07500, 0.08350, 0) @ rotation_x(-1.57080) @ rotation_z(theta[0]) # only sign changes in the first T 0 to 1 as this is left leg
+        # for front left add 0.039 to  0.0445 Refer to lab2 CAD image if confused
         T_FL_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
         T_FL_2_3 = translation(0, -0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
         T_FL_3_ee = translation(0.06231, -0.06216, 0.01800)
@@ -163,7 +168,7 @@ class InverseKinematics(Node):
         return T_FL_0_ee[:3, 3]
 
     def br_leg_fk(self, theta):
-        T_BR_0_1 = translation(-0.07500, -0.0725, 0) @ rotation_x(1.57080) @ rotation_z(theta[0])
+        T_BR_0_1 = translation(-0.07500, -0.0725, 0) @ rotation_x(1.57080) @ rotation_z(theta[0]) #for back right 
         T_BR_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
         T_BR_2_3 = translation(0, -0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
         T_BR_3_ee = translation(0.06231, -0.06216, 0.01800)
@@ -174,7 +179,7 @@ class InverseKinematics(Node):
         ################################################################################################
         # TODO: implement forward kinematics here
         ################################################################################################
-        T_BL_0_1 = translation(-0.07500, 0.0725, 0) @ rotation_x(-1.57080) @ rotation_z(theta[0])
+        T_BL_0_1 = translation(-0.07500, 0.0725, 0) @ rotation_x(-1.57080) @ rotation_z(theta[0]) # keep signs same as front left leg
         T_BL_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
         T_BL_2_3 = translation(0, -0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
         T_BL_3_ee = translation(0.06231, -0.06216, 0.01800)
