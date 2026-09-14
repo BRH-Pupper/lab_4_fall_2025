@@ -96,23 +96,25 @@ class InverseKinematics(Node):
         
         lf_ee_offset = np.array([0.06, 0.09, 0])
         lf_ee_triangle_positions = np.array([
+            stand_position_3,
             liftoff_position,
             mid_swing_position,
             touch_down_position,
             stand_position_1,
             stand_position_2,
-            stand_position_3,
+            
 
         ]) + lf_ee_offset
         
         rb_ee_offset = np.array([-0.11, -0.09, 0])
         rb_ee_triangle_positions = np.array([
+            stand_position_3,
             liftoff_position,
             mid_swing_position,
             touch_down_position,
             stand_position_1,
             stand_position_2,
-            stand_position_3,
+            
         ]) + rb_ee_offset
         
         lb_ee_offset = np.array([-0.11, 0.09, 0])
@@ -136,7 +138,7 @@ class InverseKinematics(Node):
 
 
         self.pd_timer_period = 1.0 / 200  # 200 Hz
-        self.ik_timer_period = 1.0 / 100   # 10 Hz
+        self.ik_timer_period = 1.0 /120 # 100 Hz
         self.pd_timer = self.create_timer(self.pd_timer_period, self.pd_timer_callback)
         self.ik_timer = self.create_timer(self.ik_timer_period, self.ik_timer_callback)
 
@@ -159,38 +161,24 @@ class InverseKinematics(Node):
         # TODO: implement forward kinematics here
         ################################################################################################
                 
-        T_FL_0_1 = translation(0.07500, 0.08350, 0) @ rotation_x(-1.57080) @ rotation_z(theta[0]) # only sign changes in the first T 0 to 1 as this is left leg
-        # for front left add 0.039 to  0.0445 Refer to lab2 CAD image if confused
-        T_FL_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
-        # We changed the frame of reference so that Z is out of the page, (as seen from the lab2 diagram)
-        T_FL_2_3 = translation(0, -0.04940, 0.06850) @ rotation_y(-1.57080) @ rotation_z(theta[2])
-        # Z is out of the page.
-        T_FL_3_ee = translation(-0.06231, -0.06216, 0.01800)
-        T_FL_0_ee = T_FL_0_1 @ T_FL_1_2 @ T_FL_2_3 @ T_FL_3_ee
+
+        
         return T_FL_0_ee[:3, 3]
 
     def br_leg_fk(self, theta):
         # Already implemented in Lab 2
-        T_RF_0_1 = translation(-0.07500, -(0.0335+.039), 0) @ rotation_x(1.57080) @ rotation_z(theta[0])
-        T_RF_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
-        T_RF_2_3 = translation(0, -0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
-        T_RF_3_ee = translation(0.06231, -0.06216, 0.01800)
-        T_RF_0_ee = T_RF_0_1 @ T_RF_1_2 @ T_RF_2_3 @ T_RF_3_ee
-        return T_RF_0_ee[:3, 3]
+   
+        return T_BR_0_ee[:3, 3]
 
 
     def bl_leg_fk(self, theta):
         ################################################################################################
         # TODO: implement forward kinematics here
         ################################################################################################
-        T_FL_0_1 = translation(-0.07500, 0.0335+.039, 0) @ rotation_x(-1.57080) @ rotation_z(theta[0])
-        T_FL_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
-        # We changed the frame of reference so that Z is out of the page, (as seen from the lab2 diagram)
-        T_FL_2_3 = translation(0, -0.04940, 0.06850) @ rotation_y(-1.57080) @ rotation_z(theta[2])
-        # Z is out of the page.
-        T_FL_3_ee = translation(-0.06231, -0.06216, 0.01800)
-        T_FL_0_ee = T_FL_0_1 @ T_FL_1_2 @ T_FL_2_3 @ T_FL_3_ee
-        return T_FL_0_ee[:3, 3]
+
+        return T_BL_0_ee[:3, 3]
+                        
+
 
 
     def forward_kinematics(self, theta):
@@ -249,22 +237,17 @@ class InverseKinematics(Node):
         return theta
 
     def interpolate_triangle(self, t, leg_index):
-       
-        t = t%3
-        start = None
-        end = None
         v = self.ee_triangle_positions[leg_index]
-        if t<1:
-            start = v[0]
-            end = v[1]
-        elif t<2:
-            start = v[1]
-            end = v[2]
-        else:
-            start = v[2]
-            end = v[0]
-         
-        return start + (end - start)*(t%1)
+        number_of_positions = len(v)
+
+        # Map normalized time [0, 1) onto the six trajectory segments.
+        cycle_t = (t % 1.0) * number_of_positions
+        segment_index = int(cycle_t)
+        segment_t = cycle_t - segment_index
+
+        start = v[segment_index]
+        end = v[(segment_index + 1) % number_of_positions]
+        return start + (end - start) * segment_t
 
     def cache_target_joint_positions(self):
         # Calculate and store the target joint positions for a cycle and all 4 legs
@@ -275,7 +258,6 @@ class InverseKinematics(Node):
             target_ee_cache.append([])
             target_joint_positions = [0] * 3
             for t in np.arange(0, 1, 0.02):
-                print(t)
                 target_ee = self.interpolate_triangle(t, leg_index)
                 target_joint_positions = self.inverse_kinematics_single_leg(target_ee, leg_index, initial_guess=target_joint_positions)
 
