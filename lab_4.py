@@ -138,7 +138,7 @@ class InverseKinematics(Node):
 
 
         self.pd_timer_period = 1.0 / 200  # 200 Hz
-        self.ik_timer_period = 1.0 /120 # 100 Hz
+        self.ik_timer_period = 1.0 /100 # 100 Hz
         self.pd_timer = self.create_timer(self.pd_timer_period, self.pd_timer_callback)
         self.ik_timer = self.create_timer(self.ik_timer_period, self.ik_timer_callback)
 
@@ -155,31 +155,47 @@ class InverseKinematics(Node):
         T_RF_3_ee = translation(0.06231, -0.06216, 0.01800)
         T_RF_0_ee = T_RF_0_1 @ T_RF_1_2 @ T_RF_2_3 @ T_RF_3_ee
         return T_RF_0_ee[:3, 3]
-
+    
     def fl_leg_fk(self, theta):
         ################################################################################################
         # TODO: implement forward kinematics here
         ################################################################################################
                 
+        T_FL_0_1 = translation(0.07500, 0.08350, 0) @ rotation_x(-1.57080) @ rotation_z(theta[0])
+        T_FL_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
+        # We changed the frame of reference so that Z is out of the page, (as seen from the lab2 diagram)
+        T_FL_2_3 = translation(0, 0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
+        # Z is out of the page.
+        T_FL_3_ee = translation(0.06231, 0.06216, 0.01800)
 
+
+        #T_FL_0_ee = T_FL_0_1 @ T_FL_1_2 @ T_FL_2_3 @ T_FL_3_e
+        T_FL_0_ee = T_FL_0_1 @ T_FL_1_2 @ T_FL_2_3 @ T_FL_3_ee
+        
         
         return T_FL_0_ee[:3, 3]
-
-    def br_leg_fk(self, theta):
-        # Already implemented in Lab 2
-   
-        return T_BR_0_ee[:3, 3]
-
 
     def bl_leg_fk(self, theta):
         ################################################################################################
         # TODO: implement forward kinematics here
         ################################################################################################
-
+        T_BL_0_1 = translation(-0.07500, (0.0335+.039), 0) @ rotation_x(-1.57080) @ rotation_z(theta[0])
+        T_BL_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
+        # We changed the frame of reference so that Z is out of the page, (as seen from the lab2 diagram)
+        T_BL_2_3 = translation(0, 0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
+        # Z is out of the page.
+        T_BL_3_ee = translation(0.06231, 0.06216, 0.01800)
+        T_BL_0_ee = T_BL_0_1 @ T_BL_1_2 @ T_BL_2_3 @ T_BL_3_ee
         return T_BL_0_ee[:3, 3]
-                        
 
-
+    def br_leg_fk(self, theta):
+        # Already implemented in Lab 2
+        T_BR_0_1 = translation(-0.07500, -(0.0335+.039), 0) @ rotation_x(1.57080) @ rotation_z(theta[0])
+        T_BR_1_2 = rotation_y(-1.57080) @ rotation_z(theta[1])
+        T_BR_2_3 = translation(0, -0.04940, 0.06850) @ rotation_y(1.57080) @ rotation_z(theta[2])
+        T_BR_3_ee = translation(0.06231, -0.06216, 0.01800)
+        T_BR_0_ee = T_BR_0_1 @ T_BR_1_2 @ T_BR_2_3 @ T_BR_3_ee
+        return T_BR_0_ee[:3, 3]
 
     def forward_kinematics(self, theta):
         return np.concatenate([self.fk_functions[i](theta[3*i: 3*i+3]) for i in range(4)])
