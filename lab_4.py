@@ -81,54 +81,104 @@ class InverseKinematics(Node):
         stand_position_3 = np.array([-0.025, 0.0, -0.14])
         liftoff_position = np.array([-0.05, 0.0, -0.14])
         mid_swing_position = np.array([0.0, 0.0, -0.05])
+        ## walking gait        
         
-        ## trotting
-        
-        rf_ee_offset = np.array([0.06, -0.09, 0])
-        rf_ee_triangle_positions = np.array([
-            touch_down_position,
-            stand_position_1,
-            stand_position_2,
-            stand_position_3,
-            liftoff_position,
-            mid_swing_position,
-        ]) + rf_ee_offset
-        
-        lf_ee_offset = np.array([0.06, 0.09, 0])
-        lf_ee_triangle_positions = np.array([
-            stand_position_3,
-            liftoff_position,
-            mid_swing_position,
-            touch_down_position,
-            stand_position_1,
-            stand_position_2,
+        gait = 'Trot'
+
+        if gait == 'Walk':
+            rf_ee_offset = np.array([0.06, -0.09, 0])
+            rf_ee_triangle_positions = np.array([
+                touch_down_position,
+                stand_position_1,
+                stand_position_2,
+                stand_position_3,
+                liftoff_position,
+                mid_swing_position,
+            ]) + rf_ee_offset
             
+            lf_ee_offset = np.array([0.06, 0.09, 0])
+            lf_ee_triangle_positions = np.array([
+                stand_position_1,
+                stand_position_2,
+                stand_position_3,
+                liftoff_position,
+                mid_swing_position,
+                touch_down_position,
 
-        ]) + lf_ee_offset
-        
-        rb_ee_offset = np.array([-0.11, -0.09, 0])
-        rb_ee_triangle_positions = np.array([
-            stand_position_3,
-            liftoff_position,
-            mid_swing_position,
-            touch_down_position,
-            stand_position_1,
-            stand_position_2,
+            ]) + lf_ee_offset
             
-        ]) + rb_ee_offset
+            rb_ee_offset = np.array([-0.11, -0.09, 0])
+            rb_ee_triangle_positions = np.array([
+                stand_position_2,
+                stand_position_3,
+                liftoff_position,
+                mid_swing_position,
+                touch_down_position,
+                stand_position_1,
+                
+            ]) + rb_ee_offset
+            
+            lb_ee_offset = np.array([-0.11, 0.09, 0])
+            lb_ee_triangle_positions = np.array([
+                stand_position_3,
+                liftoff_position,
+                mid_swing_position,
+                touch_down_position,
+                stand_position_1,
+                stand_position_2,
+                
+            ]) + lb_ee_offset
+        elif gait == 'Trot':
+            
+            ## trotting
+            
+            rf_ee_offset = np.array([0.06, -0.09, 0])
+            rf_ee_triangle_positions = np.array([
+                touch_down_position,
+                stand_position_1,
+                stand_position_2,
+                stand_position_3,
+                liftoff_position,
+                mid_swing_position,
+            ]) + rf_ee_offset
+            
+            lf_ee_offset = np.array([0.06, 0.09, 0])
+            lf_ee_triangle_positions = np.array([
+                stand_position_3,
+                liftoff_position,
+                mid_swing_position,
+                touch_down_position,
+                stand_position_1,
+                stand_position_2,
+                
+
+            ]) + lf_ee_offset
+            
+            rb_ee_offset = np.array([-0.11, -0.09, 0])
+            rb_ee_triangle_positions = np.array([
+                stand_position_3,
+                liftoff_position,
+                mid_swing_position,
+                touch_down_position,
+                stand_position_1,
+                stand_position_2,
+                
+            ]) + rb_ee_offset
+            
+            lb_ee_offset = np.array([-0.11, 0.09, 0])
+            lb_ee_triangle_positions = np.array([
+
+                touch_down_position,
+                stand_position_1,
+                stand_position_2,
+                stand_position_3,
+                liftoff_position,
+                mid_swing_position,
+            ]) + lb_ee_offset
+        else:
+            print('undefined gait')
+            # something else
         
-        lb_ee_offset = np.array([-0.11, 0.09, 0])
-        lb_ee_triangle_positions = np.array([
-
-            touch_down_position,
-            stand_position_1,
-            stand_position_2,
-            stand_position_3,
-            liftoff_position,
-            mid_swing_position,
-        ]) + lb_ee_offset
-
-
         self.ee_triangle_positions = [rf_ee_triangle_positions, lf_ee_triangle_positions, rb_ee_triangle_positions, lb_ee_triangle_positions]
         self.fk_functions = [self.fr_leg_fk, self.fl_leg_fk, self.br_leg_fk, self.bl_leg_fk]
 
@@ -136,9 +186,8 @@ class InverseKinematics(Node):
         print(f'shape of target_joint_positions_cache: {self.target_joint_positions_cache.shape}')
         print(f'shape of target_ee_cache: {self.target_ee_cache.shape}')
 
-
         self.pd_timer_period = 1.0 / 200  # 200 Hz
-        self.ik_timer_period = 1.0 /100 # 100 Hz
+        self.ik_timer_period = 1.0 /120 # 100 Hz
         self.pd_timer = self.create_timer(self.pd_timer_period, self.pd_timer_callback)
         self.ik_timer = self.create_timer(self.ik_timer_period, self.ik_timer_callback)
 
