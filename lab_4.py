@@ -72,7 +72,7 @@ class InverseKinematics(Node):
         self.joint_positions = None
         self.joint_velocities = None
         self.target_joint_positions = None
-        self.counter = 0
+
 
         # Trotting gate positions, already implemented
         touch_down_position = np.array([0.05, 0.0, -0.14])
@@ -178,7 +178,8 @@ class InverseKinematics(Node):
         else:
             print('undefined gait')
             # something else
-        
+
+        self.number_of_interpolation_points = 125
         self.ee_triangle_positions = [rf_ee_triangle_positions, lf_ee_triangle_positions, rb_ee_triangle_positions, lb_ee_triangle_positions]
         self.fk_functions = [self.fr_leg_fk, self.fl_leg_fk, self.br_leg_fk, self.bl_leg_fk]
 
@@ -188,6 +189,9 @@ class InverseKinematics(Node):
 
         self.pd_timer_period = 1.0 / 200  # 200 Hz
         self.ik_timer_period = 1.0 /120 # 100 Hz
+        self.gait_period_s = 1.25 
+        self.current_time = 0
+        
         self.pd_timer = self.create_timer(self.pd_timer_period, self.pd_timer_callback)
         self.ik_timer = self.create_timer(self.ik_timer_period, self.ik_timer_callback)
 
@@ -322,7 +326,8 @@ class InverseKinematics(Node):
             target_joint_positions_cache.append([])
             target_ee_cache.append([])
             target_joint_positions = [0] * 3
-            for t in np.arange(0, 1, 0.02):
+            step_size = 1 / self.number_of_interpolation_points
+            for t in np.arange(0, 1, step_size):
                 target_ee = self.interpolate_triangle(t, leg_index)
                 target_joint_positions = self.inverse_kinematics_single_leg(target_ee, leg_index, initial_guess=target_joint_positions)
 
@@ -335,19 +340,35 @@ class InverseKinematics(Node):
         
         return target_joint_positions_cache, target_ee_cache
 
-    def get_target_joint_positions(self):
-        target_joint_positions = self.target_joint_positions_cache[self.counter]
-        target_ee = self.target_ee_cache[self.counter]
-        self.counter += 1
-        if self.counter >= self.target_joint_positions_cache.shape[0]:
-            self.counter = 0
+    def get_target_joint_positions(self, current_time):
+        time_in_sequence = current_time / self.gait_period_s
+        sequence_index = time_in_sequence * self.number_of_interpolation_points
+
+        start_array_index = int(sequence_index // 1)
+        end_array_index = (start_array_index + 1) % self.number_of_interpolation_points
+        time_delta = sequence_index % 1
+        
+        start_joint_positions = self.target_joint_positions_cache[start_array_index]
+        end_joint_positions = self.target_joint_positions_cache[end_array_index]
+        delta_joint_positions = end_joint_positions - start_joint_positions
+        
+        target_joint_positions = start_joint_positions + (time_delta * delta_joint_positions)
+
+        start_target_ee = self.target_ee_cache[start_array_index]
+        end_target_ee = self.target_ee_cache[end_array_index]
+        delta_target_ee = end_target_ee - start_target_ee
+
+        target_ee = start_target_ee + (time_delta * delta_target_ee)
+
         return target_ee, target_joint_positions
 
     def ik_timer_callback(self):
         if self.joint_positions is not None:
-            target_ee, self.target_joint_positions = self.get_target_joint_positions()
-            current_ee = self.forward_kinematics(self.joint_positions)
+            self.current_time = (self.current_time + self.ik_timer_period) % self.gait_period_s
 
+            target_ee, self.target_joint_positions = self.get_target_joint_positions(self.current_time)
+            current_ee = self.forward_kinematics(self.joint_positions)
+            
             self.get_logger().info(
                 f'Target EE: {target_ee}, \
                 Current EE: {current_ee}, \
