@@ -80,7 +80,7 @@ class InverseKinematics(Node):
         stand_position_2 = np.array([0.0, 0.0, -0.14])
         stand_position_3 = np.array([-0.025, 0.0, -0.14])
         liftoff_position = np.array([-0.05, 0.0, -0.14])
-        mid_swing_position = np.array([0.0, 0.0, -0.05])
+        mid_swing_position = np.array([0.0, 0.0, -0.10])  # was -0.05 (9 cm lift), lowered to cut motor current spikes
 
 
         
@@ -119,12 +119,15 @@ class InverseKinematics(Node):
         self.ee_triangle_positions = [rf_ee_triangle_positions, lf_ee_triangle_positions, rb_ee_triangle_positions, lb_ee_triangle_positions]
         self.fk_functions = [self.fr_leg_fk, self.fl_leg_fk, self.br_leg_fk, self.bl_leg_fk]
 
+        self.stride_freq = 2.4   # Hz we can change this to make pupper slow. 3.6 Hz browned out the Pi (undervoltage)
+        self.pd_timer_period = 1.0 / 200  # 200 Hz
+        self.ik_timer_period = 1.0 /120 # 120 Hz
+        self.frames_per_cycle = int(1/(self.ik_timer_period *self.stride_freq))
+
         self.target_joint_positions_cache, self.target_ee_cache = self.cache_target_joint_positions()
         print(f'shape of target_joint_positions_cache: {self.target_joint_positions_cache.shape}')
         print(f'shape of target_ee_cache: {self.target_ee_cache.shape}')
 
-        self.pd_timer_period = 1.0 / 200  # 200 Hz
-        self.ik_timer_period = 1.0 /120 # 100 Hz
         self.pd_timer = self.create_timer(self.pd_timer_period, self.pd_timer_callback)
         self.ik_timer = self.create_timer(self.ik_timer_period, self.ik_timer_callback)
 
@@ -259,14 +262,14 @@ class InverseKinematics(Node):
             target_joint_positions_cache.append([])
             target_ee_cache.append([])
             target_joint_positions = [0] * 3
-            for t in np.arange(0, 1, 0.02):
+            for t in np.linspace(0, 1, self.frames_per_cycle, endpoint=False):
                 target_ee = self.interpolate_triangle(t, leg_index)
                 target_joint_positions = self.inverse_kinematics_single_leg(target_ee, leg_index, initial_guess=target_joint_positions)
 
                 target_joint_positions_cache[leg_index].append(target_joint_positions)
                 target_ee_cache[leg_index].append(target_ee)
 
-        # (4, 50, 3) -> (50, 12)
+        # (4, frames_per_cycle, 3) -> (frames_per_cycle, 12)
         target_joint_positions_cache = np.concatenate(target_joint_positions_cache, axis=1)
         target_ee_cache = np.concatenate(target_ee_cache, axis=1)
         
@@ -283,6 +286,10 @@ class InverseKinematics(Node):
     def ik_timer_callback(self):
         if self.joint_positions is not None:
             target_ee, self.target_joint_positions = self.get_target_joint_positions()
+
+            # Logging + FK at 120 Hz loads the Pi's CPU, so only log once per gait cycle
+            if self.counter != 1:
+                return
             current_ee = self.forward_kinematics(self.joint_positions)
 
             self.get_logger().info(

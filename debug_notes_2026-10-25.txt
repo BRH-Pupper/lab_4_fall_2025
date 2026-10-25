@@ -1,0 +1,164 @@
+PUPPER DEBUG NOTES - Sunday Oct 25, 2026
+==========================================
+
+TL;DR
+-----
+- Original problem: in trot, the front-left leg wasn't working well and the
+  pupper kept turning instead of trotting straight.
+- Trotting at 3.6 Hz (gait-change branch) fixed that: it walked in a straight
+  line. But the Raspberry Pi browned out and shut down.
+- The brownout is NOT caused by our code. It now happens on the ground with
+  every version we tried, even at 2.4 Hz and 2.0 Hz, including code that
+  walked fine for a long time in September.
+- Most likely cause: the Pi's 5V power path (5V converter, its wiring /
+  connectors, or a ground shared with the motors). The battery is fine: the
+  motors keep holding position while the Pi dies.
+- Next step: power the Pi from a separate USB-C supply and walk it on the
+  ground. If the brownouts stop, fix/replace the 5V converter and wiring.
+
+
+1. WHAT WE SAW
+--------------
+- Pi logs "Undervoltage detected!" while walking, then sometimes loses power
+  completely and reboots.
+- The motors keep holding position when the Pi dies, so the 20V battery side
+  stays up. Only the Pi's 5V supply drops.
+- The Pi's 5V rail sits at ~4.84V even when idle (a Pi 5 wants 5.1V; it
+  flags undervoltage at ~4.63V). Very little margin.
+- One undervoltage even happened while the Pi was booting, with no motors
+  running.
+- History: 1 undervoltage event on Sep 20, then none until today (8+ today).
+
+
+2. EVERY TEST WE RAN TODAY
+--------------------------
+  Code / branch            Gait    Where    Result
+  -----------------------  ------  -------  ---------------------------------
+  gait-change              3.6 Hz  ground   straight trot, then Pi shut down
+  gait-change              2.4 Hz  ground   undervoltage at ~28 s
+  gait-change + fixes(*)   2.4 Hz  ground   undervoltage at ~15 s
+  main                     2.4 Hz  ground   undervoltage ~80 s, Pi lost power
+  main                     2.4 Hz  STAND    no undervoltage in 2 minutes
+  3afcb37 (Sep 20 commit)  2.0 Hz  ground   undervoltage at ~11 s
+  3afcb37, Hailo turned off 2.0 Hz ground   undervoltage at ~14 s
+
+  (*) fixes = debug log only once per gait cycle + lower foot lift (z=-0.10)
+
+  Takeaway: ground = brownout every time, stand = fine. Code and gait speed
+  don't decide it. Load from walking on the ground is the trigger.
+
+
+3. THINGS WE RULED OUT
+----------------------
+- Our lab_4.py code: the gait-change refactor matches main exactly; main and
+  the Sep 20 commit also brown out.
+- Gait speed: 2.0 Hz brown out just like 3.6 Hz.
+- The battery: motors stay powered when the Pi dies.
+- Pi power use: the Pi itself only draws ~3-4 W (~1 A).
+- Software / config changes since September: checked kernel, firmware,
+  config.txt, motor/IMU driver, launch file, yaml, robot description, ROS
+  setup, services. Nothing power-related changed except the Sep 20 system
+  update, which turned on the Hailo-8 AI chip's driver.
+- The Hailo-8 AI chip: unloading its driver did not help (brownout at 14 s
+  vs 11 s with it on).
+- A single bad motor: all 12 motors track their commands about equally
+  (left vs right within 5-10%), report steadily, and log no errors.
+
+
+4. OTHER FINDINGS
+-----------------
+a) IMU "failed to read header" messages
+   - Means the Pi asked the IMU for data over I2C and it never answered.
+   - The kernel shows "SDA stuck at low": the IMU jams the I2C data wire,
+     about 5 s into walking, BEFORE the Pi's undervoltage alarm.
+   - The battery-voltage sensor shares that I2C bus, so it also stops
+     answering when the bus is jammed.
+   - Doesn't affect the gait (lab_4.py doesn't use the IMU).
+   - To clear it: power off the whole robot at the battery.
+   - IMU dropouts have happened on and off since July (18 launches).
+
+b) Gait "lagging" 2-3 times during the 2-minute stand run
+   - Not the cache filling up (it's a fixed 50-frame loop).
+   - The gait loop in lab_4.py stalled 30-45 ms at a time, in 4 bursts.
+   - Likely cause: main logs a big debug line on EVERY 120 Hz tick
+     (~80 KB/s to the terminal and to the log file).
+   - Fix (not yet tested on the robot): log once per gait cycle. Saved in
+     git stash, see section 6.
+
+c) Clue for the loose wire
+   - In the run where the Pi lost power, all 12 motors' readings froze at
+     the same time 18.5% of the time. That points to a SHARED wire (power,
+     ground, or the Pi-to-motor-board link), not one motor.
+   - Mild outlier: leg_back_r_1 (back-right hip side-swing) runs 5-10%
+     behind its left twin in every run. Worth wiggling its connector.
+
+d) About the original front-left leg / turning issue
+   - At 3.6 Hz it trotted straight. We haven't yet checked why the
+     front-left leg misbehaved at slower speeds, because the brownouts got
+     in the way. Revisit once power is fixed.
+
+
+5. TO DO NEXT WEEK
+------------------
+1. Power the Pi from a USB-C power bank or the official 27W Pi 5 supply,
+   then walk on the ground. Brownouts stop = the 5V converter path is the
+   problem.
+2. Wiggle test with the motors holding (launch running, no gait) while
+   power_monitor.py runs. Watch for dips when touching:
+     - battery input connector into the main board
+     - 5V converter input/output wires and its ground
+     - Pi power input (USB-C or GPIO 5V/GND pins)
+     - IMU cable (3.3V, GND, SDA, SCL)
+     - Pi-to-motor-board link and the motor cables to the legs
+     - leg_back_r_1 connector
+3. Replace the 5V converter with a 5V/5A unit set to 5.1V. Give it its own
+   ground wire straight to the battery's negative terminal.
+4. Once power is stable, go back to the front-left leg / turning issue at
+   2.4 Hz and test the logging fix.
+
+
+6. HOW TO GET BACK TO OUR CODE
+------------------------------
+The repo was left detached at commit 3afcb37. Saved work is in git stash:
+
+  stash@{0}  main: IK debug log once per gait cycle
+  stash@{1}  gait-change: 2.4 Hz, IK log once per cycle, foot lift z=-0.10
+
+Restore gait-change work:
+  git checkout gait-change
+  git stash pop stash@{1}
+
+Restore main work:
+  git checkout main
+  git stash pop stash@{0}
+
+(Pop one at a time; after the first pop the other becomes stash@{0}.)
+
+
+7. TOOLS AND FILES WE ADDED
+---------------------------
+- power_monitor.py
+    Logs the Pi's 5V rail, CPU current, temperature and undervoltage flags
+    10 times a second. Saves every sample to disk, so the log survives a
+    crash.
+      python3 power_monitor.py
+    Run it in its own terminal before starting the launch file.
+
+- power_logs/
+    power_2026_10_25-13_11_52.csv  gait-change 2.4 Hz, ground (run 1)
+    power_2026_10_25-13_17_19.csv  gait-change with fixes, ground (run 2)
+    power_2026_10_25-13_31_38.csv  main 2.4 Hz, ground (Pi lost power)
+    power_2026_10_25-13_40_55.csv  main on stand, then 3afcb37 on ground
+    power_2026_10_25-14_26_56.csv  3afcb37 on ground, Hailo off
+    motor_power_2026_10_12_rosbag.csv  per-joint torque from the Oct 12 bag
+
+- Quick checks:
+    vcgencmd get_throttled       0x0 = no undervoltage since boot
+    vcgencmd pmic_read_adc EXT5V_V   Pi's 5V input voltage
+    journalctl -k -b | grep -i undervolt   undervoltage events this boot
+
+- Leftover boot files from a test that didn't work (harmless; only used by
+  a special one-time reboot, safe to delete):
+    /boot/firmware/tryboot.txt
+    /boot/firmware/kernel_2712_june.img
+    /boot/firmware/initramfs_2712_june
