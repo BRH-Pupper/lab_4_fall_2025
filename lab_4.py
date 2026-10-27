@@ -119,7 +119,7 @@ class InverseKinematics(Node):
         self.ee_triangle_positions = [rf_ee_triangle_positions, lf_ee_triangle_positions, rb_ee_triangle_positions, lb_ee_triangle_positions]
         self.fk_functions = [self.fr_leg_fk, self.fl_leg_fk, self.br_leg_fk, self.bl_leg_fk]
 
-        self.stride_freq = 2.4   # Hz we can change this to make pupper slow. 3.6 Hz browned out the Pi (undervoltage)
+        self.stride_freq = 3.6  # Hz we can change this to make pupper slow. 3.6 Hz browned out the Pi (undervoltage)
         self.pd_timer_period = 1.0 / 200  # 200 Hz
         self.ik_timer_period = 1.0 /120 # 120 Hz
         self.frames_per_cycle = int(1/(self.ik_timer_period *self.stride_freq))
