@@ -3,6 +3,7 @@
 Run in its own terminal before starting lab_4:
     python3 power_monitor.py            # 10 Hz
     python3 power_monitor.py --rate 20
+    python3 power_monitor.py --fast     # ~350 Hz, 5V rail only, to catch short dips
 
 Every sample is written to power_logs/power_<timestamp>.csv and fsync'd,
 so the log survives the Pi browning out and shutting down.
@@ -62,10 +63,68 @@ def decode_throttled(value):
     return [name for bit, name in THROTTLE_FLAGS.items() if value & (1 << bit)]
 
 
+def fast_main():
+    """Sample only the 5V rail as fast as vcgencmd allows (~350 Hz).
+
+    Rows are buffered and written (fsync'd) every FLUSH_S, so up to that much
+    is lost if the Pi dies. Prints each sample below WARN_VOLTS.
+    """
+    FLUSH_S = 0.25
+    os.makedirs(LOG_DIR, exist_ok=True)
+    log_path = os.path.join(LOG_DIR, f'power_fast_{datetime.now():%Y_%m_%d-%H_%M_%S}.csv')
+    print(f'Fast logging to {log_path} (Ctrl+C to stop)')
+
+    min_volts = float('inf')
+    low_samples = 0
+    count = 0
+    start = time.monotonic()
+    pending = []
+    last_flush = start
+
+    with open(log_path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['time', 'elapsed_s', 'ext5v_v', 'undervolt_alarm'])
+
+        def flush():
+            writer.writerows(pending)
+            pending.clear()
+            f.flush()
+            os.fsync(f.fileno())
+
+        try:
+            while True:
+                t0 = time.monotonic()
+                out = vcgencmd('pmic_read_adc', 'EXT5V_V')
+                try:
+                    volts = float(out.split('=')[1].strip().rstrip('V'))
+                except (IndexError, ValueError):
+                    continue
+                alarm = read_file(UNDERVOLT_ALARM)
+                pending.append([datetime.now().isoformat(timespec='milliseconds'),
+                                f'{t0 - start:.3f}', f'{volts:.3f}', alarm])
+                count += 1
+                min_volts = min(min_volts, volts)
+                if volts < WARN_VOLTS:
+                    low_samples += 1
+                    print(f'{t0 - start:8.3f}s  5V = {volts:.3f}V  alarm={alarm}')
+                if t0 - last_flush >= FLUSH_S:
+                    flush()
+                    last_flush = t0
+        except KeyboardInterrupt:
+            flush()
+            print(f'\nStopped. {count} samples ({count / (time.monotonic() - start):.0f} Hz), '
+                  f'min 5V: {min_volts:.3f}V, samples below {WARN_VOLTS}V: {low_samples}')
+            print(f'Log saved to {log_path}')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--rate', type=float, default=10.0, help='samples per second')
+    parser.add_argument('--fast', action='store_true',
+                        help='5V rail only at max speed (~350 Hz) to catch short dips')
     args = parser.parse_args()
+    if args.fast:
+        return fast_main()
     period = 1.0 / args.rate
 
     os.makedirs(LOG_DIR, exist_ok=True)

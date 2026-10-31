@@ -73,6 +73,9 @@ class InverseKinematics(Node):
         self.joint_velocities = None
         self.target_joint_positions = None
         self.counter = 0
+        self.ramp_duration = 1.5  # s to ease from the current pose to the first gait pose
+        self.ramp_start_time = None
+        self.ramp_start_positions = None
 
         # Trotting gate positions, already implemented
         touch_down_position = np.array([0.05, 0.0, -0.14])
@@ -119,7 +122,7 @@ class InverseKinematics(Node):
         self.ee_triangle_positions = [rf_ee_triangle_positions, lf_ee_triangle_positions, rb_ee_triangle_positions, lb_ee_triangle_positions]
         self.fk_functions = [self.fr_leg_fk, self.fl_leg_fk, self.br_leg_fk, self.bl_leg_fk]
 
-        self.stride_freq = 3.6  # Hz we can change this to make pupper slow. 3.6 Hz browned out the Pi (undervoltage)
+        self.stride_freq = 2.4  # Hz we can change this to make pupper slow. 3.6 Hz browned out the Pi (undervoltage)
         self.pd_timer_period = 1.0 / 200  # 200 Hz
         self.ik_timer_period = 1.0 /120 # 120 Hz
         self.frames_per_cycle = int(1/(self.ik_timer_period *self.stride_freq))
@@ -283,8 +286,26 @@ class InverseKinematics(Node):
             self.counter = 0
         return target_ee, target_joint_positions
 
+    def ramp_target_joint_positions(self):
+        # Starting the gait snaps all 12 motors to the first pose at once, which dips the Pi's 5V rail
+        # (4.67V at 0.6 Hz). Ease from the current pose to the first gait pose instead.
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if self.ramp_start_time is None:
+            self.ramp_start_time = now
+            self.ramp_start_positions = np.array(self.joint_positions, dtype=float)
+        progress = (now - self.ramp_start_time) / self.ramp_duration
+        if progress >= 1.0:
+            return None
+        smooth = progress * progress * (3 - 2 * progress)  # smoothstep: zero velocity at both ends
+        goal = self.target_joint_positions_cache[0]
+        return self.ramp_start_positions + (goal - self.ramp_start_positions) * smooth
+
     def ik_timer_callback(self):
         if self.joint_positions is not None:
+            ramp_positions = self.ramp_target_joint_positions()
+            if ramp_positions is not None:
+                self.target_joint_positions = ramp_positions
+                return
             target_ee, self.target_joint_positions = self.get_target_joint_positions()
 
             # Logging + FK at 120 Hz loads the Pi's CPU, so only log once per gait cycle
