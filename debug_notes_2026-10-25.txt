@@ -1,3 +1,8 @@
+Update Saturday October 31
+  - Figureed out that pupper back left leg is lifting off on the floor and not pushing robot forward that why the robot turns left
+
+
+
 PUPPER DEBUG NOTES - Sunday Oct 25, 2026
 ==========================================
 

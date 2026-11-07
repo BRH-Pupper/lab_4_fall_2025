@@ -107,7 +107,7 @@ class InverseKinematics(Node):
             'Walk': [0, 3, 1, 4],   # one foot lifts at a time
         }
 
-        gait = 'Trot'   # change to 'Walk' to switch
+        gait = 'Trot'   # change to 'Trot' to switch
 
         if gait not in GAITS:
             print('undefined gait')
@@ -124,7 +124,7 @@ class InverseKinematics(Node):
 
         self.stride_freq = 2.4  # Hz we can change this to make pupper slow. 3.6 Hz browned out the Pi (undervoltage)
         self.pd_timer_period = 1.0 / 200  # 200 Hz
-        self.ik_timer_period = 1.0 /120 # 120 Hz
+        self.ik_timer_period = 1.0 / 100  # 100 Hz
         self.frames_per_cycle = int(1/(self.ik_timer_period *self.stride_freq))
 
         self.target_joint_positions_cache, self.target_ee_cache = self.cache_target_joint_positions()
